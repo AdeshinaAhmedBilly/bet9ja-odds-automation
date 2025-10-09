@@ -32,4 +32,4 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          python scripts/bet9ja_scrape_compare_alert.py
+          python Scripts/bet9ja_scrape_compare_alert.py
