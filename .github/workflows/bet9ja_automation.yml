@@ -2,8 +2,8 @@ name: Bet9ja Odds Automation
 
 on:
   schedule:
-    - cron: "0 */6 * * *"
-  workflow_dispatch:
+    - cron: "0 */6 * * *"  # Runs every 6 hours UTC
+  workflow_dispatch:  # Allows manual runs
 
 jobs:
   run-script:
@@ -33,3 +33,34 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           python Scripts/bet9ja_scrape_compare_alert.py
+
+      - name: Display saved odds data
+        if: always()
+        run: |
+          echo "=========================================="
+          echo "CURRENT ODDS HISTORY"
+          echo "=========================================="
+          if [ -f data/odds_history.json ]; then
+            cat data/odds_history.json | python -m json.tool
+          else
+            echo "No current odds file found"
+          fi
+          echo ""
+          echo "=========================================="
+          echo "PREVIOUS ODDS (FOR COMPARISON)"
+          echo "=========================================="
+          if [ -f data/previous_odds.json ]; then
+            cat data/previous_odds.json | python -m json.tool
+          else
+            echo "No previous odds file found"
+          fi
+          echo ""
+          echo "=========================================="
+
+      - name: Upload odds data as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: odds-data-${{ github.run_number }}
+          path: data/
+          retention-days: 30
