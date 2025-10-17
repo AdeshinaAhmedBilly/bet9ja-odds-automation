@@ -141,6 +141,119 @@ class AlertSystem:
         self.telegram_token = os.getenv('TELEGRAM_BOT_TOKEN')
         self.telegram_chat_id = os.getenv('TELEGRAM_CHAT_ID')
     
+    def generate_pdf_report(self, current_odds, previous_odds=None, changes=None):
+        """Generate a PDF report of odds data"""
+        try:
+            print("Generating PDF report...")
+            
+            pdf_path = DATA_DIR / f"odds_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            doc = SimpleDocTemplate(str(pdf_path), pagesize=A4)
+            elements = []
+            styles = getSampleStyleSheet()
+            
+            # Title
+            title_style = ParagraphStyle(
+                'CustomTitle',
+                parent=styles['Heading1'],
+                fontSize=24,
+                textColor=colors.HexColor('#2c3e50'),
+                spaceAfter=30,
+                alignment=TA_CENTER
+            )
+            title = Paragraph("Bet9ja Odds Report", title_style)
+            elements.append(title)
+            
+            # Timestamp
+            timestamp_style = ParagraphStyle(
+                'Timestamp',
+                parent=styles['Normal'],
+                fontSize=10,
+                textColor=colors.grey,
+                alignment=TA_CENTER
+            )
+            timestamp = Paragraph(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", timestamp_style)
+            elements.append(timestamp)
+            elements.append(Spacer(1, 20))
+            
+            # Current Odds Table
+            subtitle = Paragraph("Current Odds", styles['Heading2'])
+            elements.append(subtitle)
+            elements.append(Spacer(1, 12))
+            
+            if current_odds:
+                data = [['Match', 'Home', 'Draw', 'Away', 'Updated']]
+                for odds in current_odds:
+                    data.append([
+                        odds['match'],
+                        str(odds['home_odds']),
+                        str(odds['draw_odds']),
+                        str(odds['away_odds']),
+                        datetime.fromisoformat(odds['timestamp']).strftime('%H:%M')
+                    ])
+                
+                table = Table(data, colWidths=[3*inch, 0.8*inch, 0.8*inch, 0.8*inch, 1*inch])
+                table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3498db')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 12),
+                    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                    ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                ]))
+                elements.append(table)
+                elements.append(Spacer(1, 20))
+            
+            # Changes Section
+            if changes and len(changes) > 0:
+                elements.append(PageBreak())
+                changes_title = Paragraph("Significant Odds Changes", styles['Heading2'])
+                elements.append(changes_title)
+                elements.append(Spacer(1, 12))
+                
+                for change in changes:
+                    match_para = Paragraph(f"<b>{change['match']}</b>", styles['Heading3'])
+                    elements.append(match_para)
+                    elements.append(Spacer(1, 6))
+                    
+                    change_data = [['Bet Type', 'Previous', 'Current', 'Change %']]
+                    
+                    for bet_type in ['home_odds', 'draw_odds', 'away_odds']:
+                        odds = change[bet_type]
+                        change_pct = odds['change_pct']
+                        bet_label = bet_type.replace('_odds', '').replace('_', ' ').title()
+                        
+                        change_data.append([
+                            bet_label,
+                            str(odds['previous']),
+                            str(odds['current']),
+                            f"{change_pct:+.2f}%"
+                        ])
+                    
+                    change_table = Table(change_data, colWidths=[1.5*inch, 1.2*inch, 1.2*inch, 1.2*inch])
+                    change_table.setStyle(TableStyle([
+                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2ecc71')),
+                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                        ('FONTSIZE', (0, 0), (-1, 0), 10),
+                        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+                        ('BACKGROUND', (0, 1), (-1, -1), colors.lightgrey),
+                        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                    ]))
+                    elements.append(change_table)
+                    elements.append(Spacer(1, 15))
+            
+            # Build PDF
+            doc.build(elements)
+            print(f"PDF report generated: {pdf_path}")
+            return pdf_path
+            
+        except Exception as e:
+            print(f"Error generating PDF report: {e}")
+            return None
+    
     def send_email_alert(self, changes):
         """Send email notification about odds changes"""
         if not all([self.email_sender, self.email_password, self.email_receiver]):
@@ -311,6 +424,10 @@ def main():
     if previous_odds:
         changes = scraper.compare_odds(current_odds, previous_odds)
         
+        # Generate PDF report with changes
+        alert_system = AlertSystem()
+        alert_system.generate_pdf_report(current_odds, previous_odds, changes)
+        
         if changes:
             print()
             print("=" * 50)
@@ -318,12 +435,14 @@ def main():
             print("=" * 50)
             
             # Send alerts
-            alert_system = AlertSystem()
             alert_system.send_email_alert(changes)
             alert_system.send_telegram_alert(changes)
         else:
             print("No significant odds changes detected")
     else:
+        # Generate PDF report even on first run
+        alert_system = AlertSystem()
+        alert_system.generate_pdf_report(current_odds)
         print("No previous odds data for comparison (first run)")
     
     print()
